@@ -1,0 +1,56 @@
+{
+  "width": 200,
+  "height": 100,
+  "data": [
+    {
+      "name": "table",
+      "values": [
+        { "valueForX": 40, "valueForY": 40 },
+        { "valueForX": 60, "valueForY": 60 },
+        { "valueForX": 40, "valueForY": 50 }
+      ]
+    }
+  ],
+  "scales": [
+    {
+      "name": "xscale",
+      "type": "linear",
+      "domain": {
+        "data": "table",
+        "field": "valueForX"
+      },
+      "range": "width"
+    },
+    {
+      "name": "yscale",
+      "type": "linear",
+      "domain": {
+        "data": "table",
+        "field": "valueForY"
+      },
+      "range": "height"
+    }
+  ],
+  "marks": [
+    {
+      "type": "circle",
+      "from": { "data": "table" },
+      "encode": {
+        "cx": {
+          "scale": "xscale",
+          "field": "valueForX"
+        },
+        "cy": {
+          "scale": "yscale",
+          "field": "valueForY"
+        },
+        "r": {
+          "value": 3
+        },
+        "fill": {
+          "value": "steelblue"
+        }
+      }
+    }
+  ]
+}
