@@ -5,9 +5,13 @@
     {
       "name": "table",
       "values": [
+        { "valueForX": 0, "valueForY": 0 },
         { "valueForX": 40, "valueForY": 40 },
+        { "valueForX": 50, "valueForY": 45 },
+        { "valueForX": 60, "valueForY": 45 },
         { "valueForX": 60, "valueForY": 60 },
-        { "valueForX": 40, "valueForY": 50 }
+        { "valueForX": 40, "valueForY": 50 },
+        { "valueForX": 100, "valueForY": 100 }
       ]
     }
   ],

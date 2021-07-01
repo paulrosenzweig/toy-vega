@@ -48,11 +48,13 @@ function parse(specification) {
       },
     };
 
-    const rangeNode =
+    const dimensionNode =
       range === "width" ? widthNode : range === "height" ? heightNode : null;
-    if (rangeNode == null) {
+    if (dimensionNode == null) {
       throw `A scale's range needs to be "height" or "width"`;
     }
+
+    const rangeNode = [0, dimensionNode];
 
     const node = {
       type: "scale",
@@ -129,17 +131,7 @@ function render(specification, element) {
     for (const row of data.params.values) {
       const markItem = svg.append(markType);
       for (const { name, value } of attributes) {
-        let valueForAttr;
-        if (value.type === "operator") {
-          valueForAttr = value.value;
-        } else if (value.type === "data_manipulation") {
-          const { field, operation, scale: scaleNode } = value.params;
-          if (operation === "call_scale") {
-            const datum = row[field];
-            const scale = scaleForScaleNode(scaleNode);
-            valueForAttr = scale(datum);
-          }
-        }
+        const valueForAttr = resolveNodeValue(value, { row });
         markItem.attr(name, valueForAttr);
       }
     }
@@ -154,15 +146,29 @@ function scaleForScaleNode({
 
   const domain = resolveNodeValue(domainNode);
   const range = resolveNodeValue(rangeNode);
-  return d3.scaleLinear().domain(domain).range([0, range]);
+  return d3.scaleLinear().domain(domain).range(range);
 }
 
-function resolveNodeValue({ type: nodeType, value, params }) {
+function resolveNodeValue(node, context) {
+  if (Array.isArray(node)) {
+    return node.map((n) => resolveNodeValue(n, context));
+  }
+  if (node.type == null) {
+    // This is a bad test for node-ness. Non-nodes might have type properties.
+    return node;
+  }
+
+  const { type: nodeType, value, params } = node;
   if (nodeType === "data_manipulation") {
-    const { operation, field, data } = params;
+    const { operation, field, data, scale: scaleNode } = params;
     switch (operation) {
       case "extent":
         return d3.extent(data.params.values, (d) => d[field]);
+        break;
+      case "call_scale":
+        const datum = context.row[field];
+        const scale = scaleForScaleNode(scaleNode);
+        return scale(datum);
         break;
       default:
         throw `Can't handle data manipulation operation: ${operation}`;
