@@ -2,6 +2,17 @@ import * as d3 from "d3";
 
 import example from "./simple-example.json";
 
+class Node {
+  constructor(type, options) {
+    this.type = type;
+    this.options = options;
+  }
+
+  static isNode(n) {
+    return n instanceof Node;
+  }
+}
+
 function parse(specification) {
   const { width, height, scales = [], marks = [], data = [] } = specification;
 
@@ -10,54 +21,42 @@ function parse(specification) {
   if (width == null) {
     throw "need a width";
   }
-  const widthNode = {
-    type: "operator",
-    value: width,
-  };
+  const widthNode = new Node("operator", { value: width });
   nodes.push(widthNode);
 
   if (height == null) {
     throw "need a height";
   }
-  const heightNode = {
-    type: "operator",
-    value: height,
-  };
+  const heightNode = new Node("operator", { value: height });
+
   nodes.push(heightNode);
 
   dataNodes = new Map();
   for (const dataset of data) {
     const { name, values } = dataset;
-    const node = {
-      type: "data",
-      params: { name, values },
-    };
+    const node = new Node("data", { name, values });
     nodes.push(node);
     dataNodes.set(name, node);
   }
 
   const scaleNodes = new Map();
   for (const scale of scales) {
-    const { name, type, domain, range } = scale;
+    const {
+      name,
+      type,
+      domain: { field, data: dataName },
+      range,
+    } = scale;
 
+    const data = dataNodes.get(dataName);
     const domainNode =
       type === "band"
-        ? {
-            type: "data_manipulation",
-            params: {
-              operation: "get_values",
-              field: domain.field,
-              data: dataNodes.get(domain.data),
-            },
-          }
-        : {
-            type: "data_manipulation",
-            params: {
-              operation: "extent",
-              field: domain.field,
-              data: dataNodes.get(domain.data),
-            },
-          };
+        ? new Node("data_manipulation", {
+            operation: "get_values",
+            field,
+            data,
+          })
+        : new Node("data_manipulation", { operation: "extent", field, data });
 
     const dimensionNode =
       range === "width" ? widthNode : range === "height" ? heightNode : null;
@@ -67,14 +66,11 @@ function parse(specification) {
 
     const rangeNode = [0, dimensionNode];
 
-    const node = {
-      type: "scale",
-      params: {
-        type,
-        domain: domainNode,
-        range: rangeNode,
-      },
-    };
+    const node = new Node("scale", {
+      type,
+      domain: domainNode,
+      range: rangeNode,
+    });
     scaleNodes.set(name, node);
     nodes.push(node);
   }
@@ -87,59 +83,51 @@ function parse(specification) {
     const attributes = Object.entries(encode).map(([name, value]) => {
       let node;
       if (value.value !== undefined) {
-        node = {
-          type: "operator",
+        node = new Node("operator", {
           value: value.value,
-        };
+        });
       } else {
-        node = {
-          type: "data_manipulation",
-          params: {
-            operation: "call_scale",
-            field: value.field,
-            data,
-            scale: scaleNodes.get(value.scale),
-          },
-        };
+        node = new Node("data_manipulation", {
+          operation: "call_scale",
+          field: value.field,
+          data,
+          scale: scaleNodes.get(value.scale),
+        });
       }
 
       return { name, value: node };
     });
 
-    const node = {
-      type: "mark",
-      params: {
-        type,
-        attributes,
-        data,
-      },
-    };
+    const node = new Node("mark", { type, attributes, data });
+
     nodes.push(node);
   }
 
-  nodes.push({
-    type: "render",
-    params: {
+  nodes.push(
+    new Node("render", {
       markNodes: nodes.filter((n) => n.type === "mark"),
       widthNode,
       heightNode,
-    },
-  });
+    })
+  );
 
   return nodes;
 }
 
 function render(specification, element) {
   const dagNodes = parse(specification);
-  const {
-    params: { markNodes, widthNode, heightNode },
-  } = dagNodes.find((node) => node.type === "render");
+  const { markNodes, widthNode, heightNode } = dagNodes.find(
+    (node) => node.type === "render"
+  ).options;
   const svg = d3
     .create("svg")
-    .attr("viewBox", `0 0 ${widthNode.value} ${heightNode.value}`);
-  for (const { params } of markNodes) {
-    const { type: markType, data, attributes } = params;
-    for (const row of data.params.values) {
+    .attr(
+      "viewBox",
+      `0 0 ${resolveNodeValue(widthNode)} ${resolveNodeValue(heightNode)}`
+    );
+  for (const { options } of markNodes) {
+    const { type: markType, data, attributes } = options;
+    for (const row of data.options.values) {
       const markItem = svg.append(markType);
       for (const { name, value } of attributes) {
         const valueForAttr = resolveNodeValue(value, { row });
@@ -151,7 +139,7 @@ function render(specification, element) {
 }
 
 function scaleForScaleNode({
-  params: { type: scaleType, domain: domainNode, range: rangeNode },
+  options: { type: scaleType, domain: domainNode, range: rangeNode },
 }) {
   if (scaleType !== "linear" && scaleType !== "band")
     throw "Only linear and band scales are supported";
@@ -166,34 +154,33 @@ function resolveNodeValue(node, context) {
   if (Array.isArray(node)) {
     return node.map((n) => resolveNodeValue(n, context));
   }
-  if (node.type == null) {
-    // This is a bad test for node-ness. Non-nodes might have type properties.
+  if (!Node.isNode(node)) {
     return node;
   }
 
-  const { type: nodeType, value, params } = node;
+  const { type: nodeType, options } = node;
   if (nodeType === "data_manipulation") {
-    const { operation, field, data } = params;
+    const { operation, field, data } = options;
     switch (operation) {
       case "get_values":
-        return data.params.values.map((d) => d[field]);
+        return data.options.values.map((d) => d[field]);
         break;
       case "extent":
-        return d3.extent(data.params.values, (d) => d[field]);
+        return d3.extent(data.options.values, (d) => d[field]);
         break;
       case "call_scale":
         const datum = context.row[field];
-        const scale = scaleForScaleNode(params.scale);
+        const scale = scaleForScaleNode(options.scale);
         return scale(datum);
         break;
       default:
         throw `Can't handle data manipulation operation: ${operation}`;
     }
-  } else if (nodeType === "operator") {
-    return value;
-  } else {
-    throw `Can't handle ${nodeType}`;
   }
+  if (nodeType === "operator") {
+    return options.value;
+  }
+  throw `Can't handle ${nodeType}`;
 }
 
 render(example, document.getElementById("chart"));
