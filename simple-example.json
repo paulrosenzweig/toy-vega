@@ -5,20 +5,17 @@
     {
       "name": "table",
       "values": [
-        { "valueForX": 0, "valueForY": 0 },
-        { "valueForX": 40, "valueForY": 40 },
-        { "valueForX": 50, "valueForY": 45 },
-        { "valueForX": 60, "valueForY": 45 },
-        { "valueForX": 60, "valueForY": 60 },
-        { "valueForX": 40, "valueForY": 50 },
-        { "valueForX": 100, "valueForY": 100 }
+        { "valueForX": "A", "valueForY": 0 },
+        { "valueForX": "B", "valueForY": 40 },
+        { "valueForX": "C", "valueForY": 45 },
+        { "valueForX": "D", "valueForY": 45 }
       ]
     }
   ],
   "scales": [
     {
       "name": "xscale",
-      "type": "linear",
+      "type": "band",
       "domain": {
         "data": "table",
         "field": "valueForX"
@@ -37,18 +34,21 @@
   ],
   "marks": [
     {
-      "type": "circle",
+      "type": "rect",
       "from": { "data": "table" },
       "encode": {
-        "cx": {
+        "x": {
           "scale": "xscale",
           "field": "valueForX"
         },
-        "cy": {
+        "y": {
           "scale": "yscale",
           "field": "valueForY"
         },
-        "r": {
+        "width": {
+          "value": 3
+        },
+        "height": {
           "value": 3
         },
         "fill": {
