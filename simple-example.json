@@ -37,23 +37,11 @@
       "type": "rect",
       "from": { "data": "table" },
       "encode": {
-        "x": {
-          "scale": "xscale",
-          "field": "valueForX"
-        },
-        "y": {
-          "scale": "yscale",
-          "field": "valueForY"
-        },
-        "width": {
-          "value": 3
-        },
-        "height": {
-          "value": 3
-        },
-        "fill": {
-          "value": "steelblue"
-        }
+        "x": { "scale": "xscale", "field": "valueForX" },
+        "y": { "scale": "yscale", "field": "valueForY" },
+        "width": { "scale": "xscale", "band": 1 },
+        "y2": { "scale": "yscale", "value": 0 },
+        "fill": { "value": "steelblue" }
       }
     }
   ]

@@ -64,7 +64,7 @@ function parse(specification) {
       throw `A scale's range needs to be "height" or "width"`;
     }
 
-    const rangeNode = [0, dimensionNode];
+    const rangeNode = [dimensionNode, 0];
 
     const node = new Node("scale", {
       type,
@@ -82,16 +82,20 @@ function parse(specification) {
 
     const attributes = Object.entries(encode).map(([name, value]) => {
       let node;
-      if (value.value !== undefined) {
-        node = new Node("operator", {
-          value: value.value,
-        });
-      } else {
+      if (value.scale !== undefined) {
         node = new Node("data_manipulation", {
           operation: "call_scale",
-          field: value.field,
+          ...(value.value !== undefined
+            ? { value: value.value }
+            : value.band !== undefined
+            ? { band: value.band }
+            : { field: value.field }),
           data,
           scale: scaleNodes.get(value.scale),
+        });
+      } else {
+        node = new Node("operator", {
+          value: value.value,
         });
       }
 
@@ -131,7 +135,15 @@ function render(specification, element) {
       const markItem = svg.append(markType);
       for (const { name, value } of attributes) {
         const valueForAttr = resolveNodeValue(value, { row });
-        markItem.attr(name, valueForAttr);
+        if (name === "y2") {
+          const { value: yValueNode } = attributes.find((a) => a.name === "y");
+          const yValue = resolveNodeValue(yValueNode, { row });
+          const val = valueForAttr - yValue;
+          console.log({ attributes, valueForAttr, yValue, val });
+          markItem.attr("height", val);
+        } else {
+          markItem.attr(name, valueForAttr);
+        }
       }
     }
   }
@@ -146,7 +158,8 @@ function scaleForScaleNode({
 
   const domain = resolveNodeValue(domainNode);
   const range = resolveNodeValue(rangeNode);
-  const scale = scaleType === "band" ? d3.scaleBand() : d3.scaleLinear();
+  const scale =
+    scaleType === "band" ? d3.scaleBand().padding(0.1) : d3.scaleLinear();
   return scale.domain(domain).range(range);
 }
 
@@ -169,8 +182,12 @@ function resolveNodeValue(node, context) {
         return d3.extent(data.options.values, (d) => d[field]);
         break;
       case "call_scale":
-        const datum = context.row[field];
         const scale = scaleForScaleNode(options.scale);
+        if (options.band !== undefined) {
+          return scale.bandwidth();
+        }
+        const datum =
+          options.value !== undefined ? options.value : context.row[field];
         return scale(datum);
         break;
       default:
