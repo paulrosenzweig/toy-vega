@@ -2,7 +2,7 @@ import * as d3 from "d3";
 
 import example from "./simple-example.json";
 
-class Node {
+export class Node {
   constructor(type, options) {
     this.type = type;
     this.options = options;
@@ -200,11 +200,23 @@ function resolveNodeValue(node, context) {
   throw `Can't handle ${nodeType}`;
 }
 
-function downstreamNodes(node, allNodes) {
-  return [];
+export function downstreamNodes(node, allNodes) {
+  const foundNodes = [node];
+  while (true) {
+    const additionalNodes = allNodes.filter(
+      (n) =>
+        !foundNodes.includes(n) &&
+        foundNodes.some((fn) => n.options.deps.includes(fn))
+    );
+    if (additionalNodes.length === 0) break;
+    foundNodes.push(...additionalNodes);
+  }
+  allNodes.filter((n) => n.options.deps.includes(node));
+
+  return topologicalSort(foundNodes);
 }
 
-function topologicalSort(nodes) {
+export function topologicalSort(nodes) {
   const sortedNodes = [];
   function visit(n) {
     if (n.perm) {
@@ -215,7 +227,7 @@ function topologicalSort(nodes) {
     }
     n.temp = true;
 
-    n.options.deps.forEach((n) => visit(n));
+    n.options.deps.filter((n) => nodes.includes(n)).forEach((n) => visit(n));
     delete n.temp;
     n.perm = true;
     sortedNodes.push(n);
@@ -229,16 +241,5 @@ function topologicalSort(nodes) {
   }
   return sortedNodes;
 }
-const n1 = new Node("1", { deps: [] });
-const n2 = new Node("2", { deps: [n1] });
-const n3 = new Node("3", { deps: [n1] });
-const n4 = new Node("4", { deps: [n2] });
-const n5 = new Node("5", { deps: [n3] });
-const nodes = d3.shuffle([n1, n2, n3, n4, n5]);
 
-console.log(
-  topologicalSort(nodes)
-    .map((n) => n.type)
-    .join()
-);
-render(example, document.getElementById("chart"));
+// render(example, document.getElementById("chart"));

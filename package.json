@@ -5,14 +5,18 @@
   "repository": "git@github.com:paulrosenzweig/toy-vega.git",
   "author": "Paul Rosenzweig <paul.a.rosenzweig@gmail.com>",
   "license": "AGPL-3.0-only",
+  "type": "module",
   "devDependencies": {
     "esbuild": "^0.12.11",
+    "esbuild-jest": "^0.5.0",
+    "jest": "^27.0.6",
     "prettier": "^2.3.2"
   },
   "scripts": {
     "build": "esbuild --bundle index.js --outfile=out.js",
     "build-watch": "esbuild --bundle --watch index.js --outfile=out.js",
-    "format-file": "prettier --write"
+    "format-file": "prettier --write",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest"
   },
   "dependencies": {
     "d3": "^7.0.0"
