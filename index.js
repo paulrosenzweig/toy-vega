@@ -62,6 +62,7 @@ export function parse(specification) {
       type,
       domain: { field, data: dataName },
       range,
+      zero = ["linear", "sqrt", "pow"].includes(type),
     } = scale;
 
     const data = dataNodes.get(dataName);
@@ -72,6 +73,9 @@ export function parse(specification) {
             field,
             data,
           })
+        : zero
+        ? // this logic is wrong. it should handle negatives or spanning zero
+          [0, new Node("data_manipulation", { operation: "max", field, data })]
         : new Node("data_manipulation", { operation: "extent", field, data });
 
     const dimensionNode =
@@ -156,7 +160,6 @@ function render(specification, element) {
           const { value: yValueNode } = attributes.find((a) => a.name === "y");
           const yValue = resolveNodeValue(yValueNode, { row });
           const val = valueForAttr - yValue;
-          console.log({ attributes, valueForAttr, yValue, val });
           markItem.attr("height", val);
         } else {
           markItem.attr(name, valueForAttr);
@@ -197,6 +200,9 @@ function resolveNodeValue(node, context) {
         break;
       case "extent":
         return d3.extent(data.options.values, (d) => d[field]);
+        break;
+      case "max":
+        return d3.max(data.options.values, (d) => d[field]);
         break;
       case "call_scale":
         const scale = scaleForScaleNode(options.scale);
@@ -261,4 +267,4 @@ export function topologicalSort(nodes) {
   return sortedNodes;
 }
 
-// render(example, document.getElementById("chart"));
+render(example, document.getElementById("chart"));

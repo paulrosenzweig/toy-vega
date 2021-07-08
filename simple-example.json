@@ -5,10 +5,10 @@
     {
       "name": "table",
       "values": [
-        { "valueForX": "A", "valueForY": 0 },
-        { "valueForX": "B", "valueForY": 40 },
-        { "valueForX": "C", "valueForY": 45 },
-        { "valueForX": "D", "valueForY": 45 }
+        { "valueForX": "A", "valueForY": 10 },
+        { "valueForX": "B", "valueForY": 20 },
+        { "valueForX": "C", "valueForY": 30 },
+        { "valueForX": "D", "valueForY": 40 }
       ]
     }
   ],
