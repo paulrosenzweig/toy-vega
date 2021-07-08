@@ -3,17 +3,33 @@ import * as d3 from "d3";
 import example from "./simple-example.json";
 
 export class Node {
-  constructor(type, options) {
+  static isNode(n) {
+    return n instanceof Node;
+  }
+
+  constructor(type, options = {}) {
     this.type = type;
     this.options = options;
   }
 
-  static isNode(n) {
-    return n instanceof Node;
+  deps() {
+    function _deps(o) {
+      if (Node.isNode(o)) {
+        return [o];
+      }
+      if (Array.isArray(o)) {
+        return o.flatMap(_deps);
+      }
+      if (typeof o === "object" && o !== null) {
+        return Object.values(o).flatMap(_deps);
+      }
+      return [];
+    }
+    return Object.values(this.options).flatMap(_deps);
   }
 }
 
-function parse(specification) {
+export function parse(specification) {
   const { width, height, scales = [], marks = [], data = [] } = specification;
 
   const nodes = [];
@@ -31,7 +47,7 @@ function parse(specification) {
 
   nodes.push(heightNode);
 
-  dataNodes = new Map();
+  const dataNodes = new Map();
   for (const dataset of data) {
     const { name, values } = dataset;
     const node = new Node("data", { name, values });
@@ -98,6 +114,7 @@ function parse(specification) {
           value: value.value,
         });
       }
+      nodes.push(node);
 
       return { name, value: node };
     });
@@ -206,12 +223,12 @@ export function downstreamNodes(node, allNodes) {
     const additionalNodes = allNodes.filter(
       (n) =>
         !foundNodes.includes(n) &&
-        foundNodes.some((fn) => n.options.deps.includes(fn))
+        foundNodes.some((fn) => n.deps().includes(fn))
     );
     if (additionalNodes.length === 0) break;
     foundNodes.push(...additionalNodes);
   }
-  allNodes.filter((n) => n.options.deps.includes(node));
+  allNodes.filter((n) => n.deps().includes(node));
 
   return topologicalSort(foundNodes);
 }
@@ -227,7 +244,9 @@ export function topologicalSort(nodes) {
     }
     n.temp = true;
 
-    n.options.deps.filter((n) => nodes.includes(n)).forEach((n) => visit(n));
+    n.deps()
+      .filter((n) => nodes.includes(n))
+      .forEach((n) => visit(n));
     delete n.temp;
     n.perm = true;
     sortedNodes.push(n);
