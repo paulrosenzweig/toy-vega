@@ -10,6 +10,7 @@ export class Node {
   constructor(type, options = {}) {
     this.type = type;
     this.options = options;
+    this.value = undefined;
   }
 
   deps() {
@@ -26,6 +27,52 @@ export class Node {
       return [];
     }
     return Object.values(this.options).flatMap(_deps);
+  }
+
+  updateValue() {
+    this.value = this.getValue();
+  }
+
+  getValue() {
+    if (this.type === "data_manipulation") {
+      const { operation, field, data } = this.options;
+      switch (operation) {
+        case "get_values":
+          return data.options.values.map((d) => d[field]);
+          break;
+        case "extent":
+          return d3.extent(data.options.values, (d) => d[field]);
+          break;
+        case "max":
+          return d3.max(data.options.values, (d) => d[field]);
+          break;
+        case "call_scale":
+          const scale = scaleForScaleNode(this.options.scale);
+          if (this.options.band !== undefined) {
+            return () => scale.bandwidth();
+          }
+          if (this.options.value !== undefined) {
+            return () => scale(this.options.value);
+          }
+          return ({ row }) => scale(row[field]);
+          break;
+        default:
+          throw `Can't handle data manipulation operation: ${operation}`;
+      }
+    }
+    if (this.type === "operator") {
+      return this.options.value;
+    }
+    if (this.type === "data") {
+      return this.options.values;
+    }
+  }
+
+  isScale() {
+    return (
+      this.type === "data_manipulation" &&
+      this.options.operation === "call_scale"
+    );
   }
 }
 
@@ -66,30 +113,42 @@ export function parse(specification) {
     } = scale;
 
     const data = dataNodes.get(dataName);
-    const domainNode =
-      type === "band"
-        ? new Node("data_manipulation", {
-            operation: "get_values",
-            field,
-            data,
-          })
-        : zero
-        ? // this logic is wrong. it should handle negatives or spanning zero
-          [0, new Node("data_manipulation", { operation: "max", field, data })]
-        : new Node("data_manipulation", { operation: "extent", field, data });
-
+    let domain;
+    if (type === "band") {
+      domain = new Node("data_manipulation", {
+        operation: "get_values",
+        field,
+        data,
+      });
+      nodes.push(domain);
+    } else if (zero) {
+      // this logic is wrong. it should handle negatives or spanning zero
+      const node = new Node("data_manipulation", {
+        operation: "max",
+        field,
+        data,
+      });
+      nodes.push(node);
+      domain = [0, node];
+    } else {
+      domain = new Node("data_manipulation", {
+        operation: "extent",
+        field,
+        data,
+      });
+      nodes.push(domain);
+    }
     const dimensionNode =
       range === "width" ? widthNode : range === "height" ? heightNode : null;
     if (dimensionNode == null) {
       throw `A scale's range needs to be "height" or "width"`;
     }
-
-    const rangeNode = [dimensionNode, 0];
+    nodes.push(dimensionNode);
 
     const node = new Node("scale", {
       type,
-      domain: domainNode,
-      range: rangeNode,
+      domain,
+      range: [dimensionNode, 0],
     });
     scaleNodes.set(name, node);
     nodes.push(node);
@@ -141,24 +200,22 @@ export function parse(specification) {
 
 function render(specification, element) {
   const dagNodes = parse(specification);
-  const { markNodes, widthNode, heightNode } = dagNodes.find(
-    (node) => node.type === "render"
-  ).options;
-  const svg = d3
-    .create("svg")
-    .attr(
-      "viewBox",
-      `0 0 ${resolveNodeValue(widthNode)} ${resolveNodeValue(heightNode)}`
-    );
+  topologicalSort(dagNodes).forEach((n) => n.updateValue());
+  const {
+    markNodes,
+    widthNode: { value: width },
+    heightNode: { value: height },
+  } = dagNodes.find((node) => node.type === "render").options;
+  const svg = d3.create("svg").attr("viewBox", `0 0 ${width} ${height}`);
   for (const { options } of markNodes) {
     const { type: markType, data, attributes } = options;
-    for (const row of data.options.values) {
+    for (const row of data.value) {
       const markItem = svg.append(markType);
       for (const { name, value } of attributes) {
-        const valueForAttr = resolveNodeValue(value, { row });
+        const valueForAttr = resolveValue(value, { row });
         if (name === "y2") {
           const { value: yValueNode } = attributes.find((a) => a.name === "y");
-          const yValue = resolveNodeValue(yValueNode, { row });
+          const yValue = resolveValue(yValueNode, { row });
           const val = valueForAttr - yValue;
           markItem.attr("height", val);
         } else {
@@ -176,51 +233,24 @@ function scaleForScaleNode({
   if (scaleType !== "linear" && scaleType !== "band")
     throw "Only linear and band scales are supported";
 
-  const domain = resolveNodeValue(domainNode);
-  const range = resolveNodeValue(rangeNode);
+  const domain = resolveValue(domainNode);
+  const range = resolveValue(rangeNode);
   const scale =
     scaleType === "band" ? d3.scaleBand().padding(0.1) : d3.scaleLinear();
   return scale.domain(domain).range(range);
 }
 
-function resolveNodeValue(node, context) {
+function resolveValue(node, context) {
   if (Array.isArray(node)) {
-    return node.map((n) => resolveNodeValue(n, context));
+    return node.map((n) => resolveValue(n, context));
   }
   if (!Node.isNode(node)) {
     return node;
   }
-
-  const { type: nodeType, options } = node;
-  if (nodeType === "data_manipulation") {
-    const { operation, field, data } = options;
-    switch (operation) {
-      case "get_values":
-        return data.options.values.map((d) => d[field]);
-        break;
-      case "extent":
-        return d3.extent(data.options.values, (d) => d[field]);
-        break;
-      case "max":
-        return d3.max(data.options.values, (d) => d[field]);
-        break;
-      case "call_scale":
-        const scale = scaleForScaleNode(options.scale);
-        if (options.band !== undefined) {
-          return scale.bandwidth();
-        }
-        const datum =
-          options.value !== undefined ? options.value : context.row[field];
-        return scale(datum);
-        break;
-      default:
-        throw `Can't handle data manipulation operation: ${operation}`;
-    }
+  if (node.isScale()) {
+    return node.value(context);
   }
-  if (nodeType === "operator") {
-    return options.value;
-  }
-  throw `Can't handle ${nodeType}`;
+  return node.value;
 }
 
 export function downstreamNodes(node, allNodes) {
