@@ -207,21 +207,26 @@ function render(specification, element) {
     heightNode: { value: height },
   } = dagNodes.find((node) => node.type === "render").options;
   const svg = d3.create("svg").attr("viewBox", `0 0 ${width} ${height}`);
-  for (const { options } of markNodes) {
-    const { type: markType, data, attributes } = options;
-    for (const row of data.value) {
-      const markItem = svg.append(markType);
-      for (const { name, value } of attributes) {
+  for (const node of markNodes) {
+    const { type: markType, data, attributes } = node.options;
+    node.element = svg.append("g");
+    const selection = node.element
+      .selectAll(markType)
+      .data(data.value)
+      .enter()
+      .append(markType);
+    for (const { name, value } of attributes) {
+      selection.attr(name === "y2" ? "height" : name, (row) => {
         const valueForAttr = resolveValue(value, { row });
         if (name === "y2") {
           const { value: yValueNode } = attributes.find((a) => a.name === "y");
           const yValue = resolveValue(yValueNode, { row });
           const val = valueForAttr - yValue;
-          markItem.attr("height", val);
+          return val;
         } else {
-          markItem.attr(name, valueForAttr);
+          return valueForAttr;
         }
-      }
+      });
     }
   }
   element.append(svg.node());
