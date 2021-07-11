@@ -34,6 +34,10 @@ export class Node {
   }
 
   getValue() {
+    if (this.type === "signal") {
+      const elem = document.querySelector(this.options.bind.element);
+      return elem.value;
+    }
     if (this.type === "data_manipulation") {
       const { operation, field, data } = this.options;
       switch (operation) {
@@ -77,7 +81,14 @@ export class Node {
 }
 
 export function parse(specification) {
-  const { width, height, scales = [], marks = [], data = [] } = specification;
+  const {
+    width,
+    height,
+    signals = [],
+    scales = [],
+    marks = [],
+    data = [],
+  } = specification;
 
   const nodes = [];
 
@@ -94,6 +105,13 @@ export function parse(specification) {
 
   nodes.push(heightNode);
 
+  const signalNodes = new Map();
+  for (const { name, bind } of signals) {
+    const node = new Node("signal", { name, bind });
+    nodes.push(node);
+    signalNodes.set(name, node);
+  }
+
   const dataNodes = new Map();
   for (const dataset of data) {
     const { name, values } = dataset;
@@ -109,6 +127,7 @@ export function parse(specification) {
       type,
       domain: { field, data: dataName },
       range,
+      padding,
       zero = ["linear", "sqrt", "pow"].includes(type),
     } = scale;
 
@@ -149,6 +168,7 @@ export function parse(specification) {
       type,
       domain,
       range: [dimensionNode, 0],
+      ...(type === "band" ? { padding: signalNodes.get(padding.signal) } : {}),
     });
     scaleNodes.set(name, node);
     nodes.push(node);
@@ -201,12 +221,12 @@ export function parse(specification) {
 function render(specification, element) {
   const dagNodes = parse(specification);
   topologicalSort(dagNodes).forEach((n) => n.updateValue());
-  const {
-    markNodes,
-    widthNode: { value: width },
-    heightNode: { value: height },
-  } = dagNodes.find((node) => node.type === "render").options;
-  const svg = d3.create("svg").attr("viewBox", `0 0 ${width} ${height}`);
+  const { markNodes, widthNode, heightNode } = dagNodes.find(
+    (node) => node.type === "render"
+  ).options;
+  const svg = d3
+    .create("svg")
+    .attr("viewBox", `0 0 ${widthNode.value} ${heightNode.value}`);
   for (const node of markNodes) {
     const { type: markType, data, attributes } = node.options;
     node.element = svg.append("g");
@@ -230,10 +250,37 @@ function render(specification, element) {
     }
   }
   element.append(svg.node());
+
+  const signalNode = dagNodes.find((n) => n.type === "signal");
+  document
+    .querySelector(signalNode.options.bind.element)
+    .addEventListener("change", () => {
+      downstreamNodes(signalNode, dagNodes).forEach((n) => n.updateValue());
+      svg.attr("viewBox", `0 0 ${widthNode.value} ${heightNode.value}`);
+      for (const node of markNodes) {
+        const { type: markType, data, attributes } = node.options;
+        const selection = node.element.selectAll(markType);
+        for (const { name, value } of attributes) {
+          selection.attr(name === "y2" ? "height" : name, (row) => {
+            const valueForAttr = resolveValue(value, { row });
+            if (name === "y2") {
+              const { value: yValueNode } = attributes.find(
+                (a) => a.name === "y"
+              );
+              const yValue = resolveValue(yValueNode, { row });
+              const val = valueForAttr - yValue;
+              return val;
+            } else {
+              return valueForAttr;
+            }
+          });
+        }
+      }
+    });
 }
 
 function scaleForScaleNode({
-  options: { type: scaleType, domain: domainNode, range: rangeNode },
+  options: { type: scaleType, domain: domainNode, range: rangeNode, padding },
 }) {
   if (scaleType !== "linear" && scaleType !== "band")
     throw "Only linear and band scales are supported";
@@ -241,7 +288,9 @@ function scaleForScaleNode({
   const domain = resolveValue(domainNode);
   const range = resolveValue(rangeNode);
   const scale =
-    scaleType === "band" ? d3.scaleBand().padding(0.1) : d3.scaleLinear();
+    scaleType === "band"
+      ? d3.scaleBand().padding(padding.value)
+      : d3.scaleLinear();
   return scale.domain(domain).range(range);
 }
 
