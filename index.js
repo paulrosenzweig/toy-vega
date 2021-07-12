@@ -227,28 +227,34 @@ function render(specification, element) {
   const svg = d3
     .create("svg")
     .attr("viewBox", `0 0 ${widthNode.value} ${heightNode.value}`);
-  for (const node of markNodes) {
-    const { type: markType, data, attributes } = node.options;
-    node.element = svg.append("g");
-    const selection = node.element
-      .selectAll(markType)
-      .data(data.value)
-      .enter()
-      .append(markType);
-    for (const { name, value } of attributes) {
-      selection.attr(name === "y2" ? "height" : name, (row) => {
-        const valueForAttr = resolveValue(value, { row });
-        if (name === "y2") {
-          const { value: yValueNode } = attributes.find((a) => a.name === "y");
-          const yValue = resolveValue(yValueNode, { row });
-          const val = valueForAttr - yValue;
-          return val;
-        } else {
-          return valueForAttr;
-        }
-      });
+
+  const update = () => {
+    for (const node of markNodes) {
+      const { type: markType, data, attributes } = node.options;
+      node.element ||= svg.append("g");
+      const selection = node.element
+        .selectAll(markType)
+        .data(data.value)
+        .join(markType);
+      for (const { name, value } of attributes) {
+        selection.attr(name === "y2" ? "height" : name, (row) => {
+          const valueForAttr = resolveValue(value, { row });
+          if (name === "y2") {
+            const { value: yValueNode } = attributes.find(
+              (a) => a.name === "y"
+            );
+            const yValue = resolveValue(yValueNode, { row });
+            const val = valueForAttr - yValue;
+            return val;
+          } else {
+            console.log({ name, value, valueForAttr });
+            return valueForAttr;
+          }
+        });
+      }
     }
-  }
+  };
+  update();
   element.append(svg.node());
 
   const signalNode = dagNodes.find((n) => n.type === "signal");
@@ -257,25 +263,7 @@ function render(specification, element) {
     .addEventListener("change", () => {
       downstreamNodes(signalNode, dagNodes).forEach((n) => n.updateValue());
       svg.attr("viewBox", `0 0 ${widthNode.value} ${heightNode.value}`);
-      for (const node of markNodes) {
-        const { type: markType, data, attributes } = node.options;
-        const selection = node.element.selectAll(markType);
-        for (const { name, value } of attributes) {
-          selection.attr(name === "y2" ? "height" : name, (row) => {
-            const valueForAttr = resolveValue(value, { row });
-            if (name === "y2") {
-              const { value: yValueNode } = attributes.find(
-                (a) => a.name === "y"
-              );
-              const yValue = resolveValue(yValueNode, { row });
-              const val = valueForAttr - yValue;
-              return val;
-            } else {
-              return valueForAttr;
-            }
-          });
-        }
-      }
+      update();
     });
 }
 
